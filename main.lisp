@@ -32,13 +32,40 @@
 
 (defvar *pwd* nil)                      ;current folder
 
+(defmacro configure-sctable (sctable)
+  "Configure scrolled table"
+  `(progn
+
+     ;; define mytitle
+    (format-wish "~a tag row mytitle 0 1" (widget-path (table ,sctable)))
+    (format-wish "~a tag col mytitle 0" (widget-path (table ,sctable)))
+
+    ;; configure mytitle
+    (format-wish "~a tag configure mytitle -background gray94 -foreground black -state disabled -borderwidth {2 2 1 1}"
+                 (widget-path (table ,sctable)))
+    (format-wish "~a tag configure mytitle -anchor center"
+                 (widget-path (table ,sctable)))
+    
+    ;; configure scrolled table
+    (format-wish "~a configure -background white -foreground black -state disabled -ellipsis ... -multiline 1"
+                  (widget-path (table ,sctable)))
+    (format-wish "~a configure -selecttype cell -selectmode extended -anchor w -ipadx 2 -pady 2 -font myfont1"
+                 (widget-path (table ,sctable)))
+
+    (format-wish "~a configure -justify left" (widget-path (table ,sctable))) ;; fail
+    ))
+
 (defun main ()
   (setf *debug-tk* nil)
   (let ((frame-hash (make-hash-table :test 'equal))
         (xpt-hash (make-hash-table :test 'equal))
         ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable)
     
+
     (with-ltk ()
+      ;; define font
+      (font-create 'myfont1 :size 10)
+
       (setf ce (make-instance 'entry :width 40) ;command entry
             nb (make-instance 'notebook)
             menubar (make-menubar)
@@ -127,14 +154,3 @@
 
   ))
 
-(defmacro configure-sctable (sctable)
-  "Configure scrolled table"
-  `(progn
-    (format-wish "~a tag row mytitle 0 1" (widget-path (table ,sctable)))
-    (format-wish "~a tag col mytitle 0" (widget-path (table ,sctable)))
-    (format-wish "~a configure -selecttype row -background white -foreground black -state disabled -ellipsis ... -multiline 0 -selectmode extended"
-                  (widget-path (table ,sctable)))
-    (format-wish "~a tag configure mytitle -background gray94 -foreground black -state disabled -borderwidth {2 2 1 1}"
-                 (widget-path (table ,sctable)))
-    ;; (format-wish "~a configure -justify ~a" (widget-path (table sctable)) "left") ;; fail
-    ))
