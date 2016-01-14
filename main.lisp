@@ -30,60 +30,63 @@
 |#
 
 
-(defvar *frame-hash* (make-hash-table :test 'equal))
-(defvar *xpt-hash* (make-hash-table :test 'equal))
 (defvar *pwd* nil)                      ;current folder
 
 (defun main ()
   (setf *debug-tk* nil)
-  (with-ltk ()
-    (let* ((ce (make-instance 'entry :width 40)) ;command entry
-           (nb (make-instance 'notebook))
-           (menubar (make-menubar))
-           (mfile (make-menu menubar "File" ))
-           (mf-open-xpt (make-menubutton mfile "Open .xpt"
-                                         (lambda ()
-                                           (multiple-value-bind (xpt-name obs-records) (open-xpt-file)
-                                             (if xpt-name
-                                                 (if (gethash xpt-name *frame-hash*)
-                                                     (notebook-select nb (gethash xpt-name *frame-hash*))
-                                                     (let* ((f1 (make-instance 'frame :master nb))
-                                                            (sctable (setf sctable (make-instance 'scrolled-table
-                                                                                                  :titlerows 2
-                                                                                                  :titlecols 1
-                                                                                                  :data (and obs-records)
-                                                                                                  :master f1)))
-                                                            (xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
-                                                         (setf (gethash xpt-name *frame-hash*) f1)
-                                                         (setf (gethash xpt-name1 *xpt-hash*) xpt-name)
-                                                         (pack sctable :fill :both :expand t)
-                                                         (notebook-add nb f1 :text xpt-name1)
-                                                         (notebook-select nb f1))))))
-                                         :underline 0))
-           (mf-close-xpt (make-menubutton mfile "Close .xpt"
+  (let ((frame-hash (make-hash-table :test 'equal))
+        (xpt-hash (make-hash-table :test 'equal))
+        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable)
+    
+    (with-ltk ()
+      (setf ce (make-instance 'entry :width 40) ;command entry
+            nb (make-instance 'notebook)
+            menubar (make-menubar)
+            mfile (make-menu menubar "File" )
+            mf-open-xpt (make-menubutton mfile "Open .xpt" (lambda ()
+                                                             (multiple-value-bind (xpt-name obs-records) (open-xpt-file)
+                                                               (if xpt-name
+                                                                   (if (gethash xpt-name frame-hash)
+                                                                       (notebook-select nb (gethash xpt-name frame-hash))
+                                                                       (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
+                                                                         (setf f1 (make-instance 'frame :master nb)
+                                                                               sctable (make-instance 'scrolled-table
+                                                                                                      :titlerows 0
+                                                                                                      :titlecols 0
+                                                                                                      :data (and obs-records)
+                                                                                                      :master f1))
+                                                                         (configure-sctable sctable)
+                                                                         (setf (gethash xpt-name frame-hash) f1)
+                                                                                                      (setf (gethash xpt-name1 xpt-hash) xpt-name)
+                                                                                                      
+                                                                         (pack sctable :fill :both :expand t)
+                                                                         (notebook-add nb f1 :text xpt-name1) 
+                                                                         (configure mf-close-xpt 'state 'normal)
+                                                                         (notebook-select nb f1))))))
+                                         :underline 0)
+            mf-close-xpt (make-menubutton mfile "Close .xpt"
                                           (lambda ()
                                             (let ((tabname (notebook-tab nb "current" "text" "")))
-                                            (remhash (gethash tabname *xpt-hash*) *frame-hash*)
-                                            (remhash tabname *xpt-hash*)
-                                            (format-wish "~a forget current" (widget-path nb))))))
-
-           (sep1 (add-separator mfile))
-           (mf-exit (make-menubutton mfile "Exit" (lambda ()
-                                                    (clrhash *frame-hash*)
-                                                    (clrhash *xpt-hash*)
+                                              (remhash (gethash tabname xpt-hash) frame-hash)
+                                              (remhash tabname xpt-hash)
+                                              (if (= (hash-table-count xpt-hash) 0)
+                                                  (configure mf-close-xpt 'state 'disable))
+                                              (format-wish "~a forget current" (widget-path nb))))
+                                          :state 'disable)
+            sep1 (add-separator mfile)
+            mf-exit (make-menubutton mfile "Exit" (lambda ()
                                                     (setf *exit-mainloop* t))
                                      :underline 1
-                                     :accelerator "Alt q"))
-           (mhelp (make-menu menubar "Help" ))
-           (mf-about (make-menubutton mhelp "About" #'about-box
-                                     :underline 0))
-           )
+                                     :accelerator "Alt q")
+            mhelp (make-menu menubar "Help" )
+            mf-about (make-menubutton mhelp "About" #'about-box
+                                      :underline 0))
 
       (wm-title *tk* "SAS Helper")
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
       (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-xpt-file))) ;todo this is test.
-      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test nb))) ;todo this is test.
+      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable))) ;todo this is test.
       (pack nb :fill :both :expand t)
       (pack ce :side :bottom :fill :both)
       )))
@@ -116,11 +119,22 @@
   (finish-output))
 
 
-(defun test (nb)
+(defun test (sctable)
   (let ((x (window-x *tk*))
         (y (window-y *tk*)))
-  (format t "Test: ~a~%" x)
-  (format t "Test: ~a~%" y)
-  (format t "Test: ~a~%" (notebook-tab nb "current" "text" "dd"))
+    (format-wish "~a configure -justify ~a" (widget-path (table sctable)) "left") ;; fail
+    (format-wish "~a configure -ellipsis ~a" (widget-path (table sctable)) "...")
 
   ))
+
+(defmacro configure-sctable (sctable)
+  "Configure scrolled table"
+  `(progn
+    (format-wish "~a tag row mytitle 0 1" (widget-path (table ,sctable)))
+    (format-wish "~a tag col mytitle 0" (widget-path (table ,sctable)))
+    (format-wish "~a configure -selecttype row -background white -foreground black -state disabled -ellipsis ... -multiline 0 -selectmode extended"
+                  (widget-path (table ,sctable)))
+    (format-wish "~a tag configure mytitle -background gray94 -foreground black -state disabled -borderwidth {2 2 1 1}"
+                 (widget-path (table ,sctable)))
+    ;; (format-wish "~a configure -justify ~a" (widget-path (table sctable)) "left") ;; fail
+    ))
