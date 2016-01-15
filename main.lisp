@@ -31,35 +31,62 @@
 
 
 (defvar *pwd* nil)                      ;current folder
+(defvar *titlerows* 2)
+(defvar *titlecols* 1)
+
+;; get the cells with tag "mysel"
+(defun get-cell-mysel (table-path)
+  (format-wish "senddatastrings [~a tag cell mysel]" table-path)
+  (ltk::read-data))
 
 (defmacro configure-sctable (sctable)
   "Configure scrolled table"
-  `(progn
+  `(let ((table-path (widget-path (table ,sctable)))
+         (table-name (ltk::name ,sctable)))
 
      ;; define mytitle
-    (format-wish "~a tag row mytitle 0 1" (widget-path (table ,sctable)))
-    (format-wish "~a tag col mytitle 0" (widget-path (table ,sctable)))
+    ;; (format-wish "~a tag row mytitle 0 1" table-path)
+    ;; (format-wish "~a tag col mytitle 0" table-path)
 
-    ;; configure mytitle
-    (format-wish "~a tag configure mytitle -background gray94 -foreground black -state disabled -borderwidth {2 2 1 1}"
-                 (widget-path (table ,sctable)))
-    (format-wish "~a tag configure mytitle -anchor center"
-                 (widget-path (table ,sctable)))
+    ;; configure title
+    (format-wish "~a tag configure title -relief groove -background gray94 -foreground black -anchor center"
+                 table-path)
+
+    ;; configure mysel
+    (format-wish "~a tag configure mysel -background systemHighlight" table-path)
+    (format-wish "~a tag raise mysel" table-path)
     
     ;; configure scrolled table
-    (format-wish "~a configure -background white -foreground black -state disabled -ellipsis ... -multiline 1"
-                  (widget-path (table ,sctable)))
-    (format-wish "~a configure -selecttype cell -selectmode extended -anchor w -ipadx 2 -pady 2 -font myfont1"
-                 (widget-path (table ,sctable)))
+    (format-wish "~a configure -background white -foreground black -state disabled -ellipsis ... -multiline 1" table-path)
+    (format-wish "~a configure -selecttype cell -selectmode extended -anchor w -ipadx 2 -pady 2 -font myfont1" table-path)
+    (format-wish "~a configure -selecttitle 1" table-path)
 
-    (format-wish "~a configure -justify left" (widget-path (table ,sctable))) ;; fail
+    (ltk::add-callback (format nil "~a-bc" table-name) ;tktable browsecommand callback
+                       (lambda ()
+                         (let ((r (index-row table-path "active"))
+                               (c (index-col table-path "active"))
+                               (c-mysel (get-cell-mysel table-path)))
+                           (if (not (null c-mysel))
+                               (format-wish "~a tag cell {} ~{~a ~}" table-path c-mysel))
+                           (if (/= c 0) (format-wish "~a tag cell mysel 0,~a" table-path c))
+                           (if (/= r 0) (format-wish "~a tag cell mysel ~a,0" table-path r))
+                           )))
+
+    (format-wish "~a configure -browsecommand {callback ~a}"
+                 table-path (format nil "~a-bc" table-name))
+                     
+                                                  
+    ;; configure embedded window
+    (format-wish "~a window configure 1,1 -window ~a" table-path (widget-path test))
+
     ))
 
+
 (defun main ()
-  (setf *debug-tk* nil)
+  (setf *debug-tk* t)
   (let ((frame-hash (make-hash-table :test 'equal))
         (xpt-hash (make-hash-table :test 'equal))
-        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable)
+        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable test)
     
 
     (with-ltk ()
@@ -68,6 +95,9 @@
 
       (setf ce (make-instance 'entry :width 40) ;command entry
             nb (make-instance 'notebook)
+            
+            test (make-instance 'button :text "test")
+            
             menubar (make-menubar)
             mfile (make-menu menubar "File" )
             mf-open-xpt (make-menubutton mfile "Open .xpt" (lambda ()
@@ -78,8 +108,8 @@
                                                                        (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
                                                                          (setf f1 (make-instance 'frame :master nb)
                                                                                sctable (make-instance 'scrolled-table
-                                                                                                      :titlerows 0
-                                                                                                      :titlecols 0
+                                                                                                      :titlerows *titlerows*
+                                                                                                      :titlecols *titlecols*
                                                                                                       :data (and obs-records)
                                                                                                       :master f1))
                                                                          (configure-sctable sctable)
@@ -113,11 +143,13 @@
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
       (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-xpt-file))) ;todo this is test.
-      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable))) ;todo this is test.
+      (bind *tk* "<t>" (lambda (event) (declare (ignore event))))
+
       (pack nb :fill :both :expand t)
       (pack ce :side :bottom :fill :both)
       )))
 
+  
 (defun open-xpt-file ()
   ""
   (let* ((file-to-open (get-open-file :filetypes '(("SAS XPT files" "*.xpt"))
@@ -149,7 +181,6 @@
 (defun test (sctable)
   (let ((x (window-x *tk*))
         (y (window-y *tk*)))
-    (format-wish "~a configure -justify ~a" (widget-path (table sctable)) "left") ;; fail
     (format-wish "~a configure -ellipsis ~a" (widget-path (table sctable)) "...")
 
   ))
