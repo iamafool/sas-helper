@@ -59,7 +59,7 @@
     ;; configure scrolled table
     (format-wish "~a configure -background white -foreground black -state disabled -ellipsis ... -multiline 1" table-path)
     (format-wish "~a configure -selecttype cell -selectmode extended -anchor w -ipadx 2 -pady 2 -font myfont1" table-path)
-    (format-wish "~a configure -selecttitle 1" table-path)
+    (format-wish "~a configure -selecttitle 1 -cursor arrow" table-path)
 
     (ltk::add-callback (format nil "~a-bc" table-name) ;tktable browsecommand callback
                        (lambda ()
