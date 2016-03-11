@@ -28,38 +28,52 @@
   (values :pointer)
   )
 
+(defclass sd7 ()
+  ((obs-count :initform nil :accessor sd7-obs-count)
+   (var-count :initform nil :accessor sd7-var-count)
+   (var-names :initform nil :accessor sd7-var-names)
+   (var-labels :initform nil :accessor sd7-var-labels)
+   (var-formats :initform nil :accessor sd7-var-formats)
+   (var-types :initform nil :accessor sd7-var-types)
+   (obs-records :initform nil :accessor sd7-obs-records)))
+
+  
 (defun read-sas7bdat (file)
   ""
-  (with-foreign-object (x 'sas7bdat)
-    (foreign-funcall "readstat_read_sas7bdat"
-                     :string file
-                     :pointer x
-                     :int)
-    (with-foreign-slots ((obs_count var_count var_names var_labels var_formats var_types values) x sas7bdat)
-      (format t "obs_count is ~a~%var_count is ~a~%" obs_count var_count)
-      (format t "var names are ~a~%"
+  (let ((sd7-i-1 (make-instance 'sd7))) ; sd7 instance 01
+    (with-foreign-object (x 'sas7bdat)
+      (foreign-funcall "readstat_read_sas7bdat"
+                       :string file
+                       :pointer x
+                       :int)
+      (with-foreign-slots ((obs_count var_count var_names var_labels var_formats var_types values) x sas7bdat)
+        (setf (sd7-obs-count sd7-i-1) obs_count)
+        (setf (sd7-var-count sd7-i-1) var_count)
+        (setf (sd7-var-names sd7-i-1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_names :string i)))
-      (format t "var labels are ~a~%"
+        (setf (sd7-var-labels sd7-i-1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_labels :string i)))
-      (format t "var formats are ~a~%"
+        (setf (sd7-var-formats sd7-i-1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_formats :string i)))
-      (format t "var types are ~a~%"
+        (setf (sd7-var-types sd7-i-1)
               (loop for i from 0 below var_count
                  collect (mem-aref (mem-aref var_types :pointer i) :int 0)))
+        (setf (sd7-obs-records sd7-i-1)
+              (loop for i from 0 below obs_count
+                   collect
+                   (loop for j from 0 below var_count
+                        collect (mem-aref values :string (+ (* i var_count) j)))))
 
-      (format t "Values:~%")
-      (loop for i from 0 below obs_count
-         do
-           (loop for j from 0 below var_count
-              do
-                (format t "~a~c" (mem-aref values :string (+ (* i var_count) j)) #\tab))
-           (format t "~%"))
-      )))
+        ))
+    sd7-i-1))
 
-;; (read-sas7bdat "c:\\D\\GitHub\\ReadStat\\src\\ra.sas7bdat")
+;; (setf sd7 (read-sas7bdat "c:\\D\\GitHub\\ReadStat\\src\\ra.sas7bdat"))
+;; (sd7-var-count sd7)
+;; (sd7-var-names sd7)
+;; (sd7-obs-records sd7)
 
 (defun table-data (var-names obs-records)
   (format t "Function table-data start.~%")
@@ -173,6 +187,27 @@
                                                                          (configure mf-close-xpt 'state 'normal)
                                                                          (notebook-select nb f1))))))
                                          :underline 0)
+            mf-open-sas7bdat (make-menubutton mfile "Open .sas7bdat" (lambda ()
+                                                             (multiple-value-bind (xpt-name obs-records) (open-sas7bdat-file)
+                                                               (if xpt-name
+                                                                   (if (gethash xpt-name frame-hash)
+                                                                       (notebook-select nb (gethash xpt-name frame-hash))
+                                                                       (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
+                                                                         (setf f1 (make-instance 'frame :master nb)
+                                                                               sctable (make-instance 'scrolled-table
+                                                                                                      :titlerows *titlerows*
+                                                                                                      :titlecols *titlecols*
+                                                                                                      :data (and obs-records)
+                                                                                                      :master f1))
+                                                                         (configure-sctable sctable)
+                                                                         (setf (gethash xpt-name frame-hash) f1)
+                                                                                                      (setf (gethash xpt-name1 xpt-hash) xpt-name)
+                                                                                                      
+                                                                         (pack sctable :fill :both :expand t)
+                                                                         (notebook-add nb f1 :text xpt-name1) 
+                                                                         (configure mf-close-xpt 'state 'normal)
+                                                                         (notebook-select nb f1))))))
+                                         :underline 0)
             mf-close-xpt (make-menubutton mfile "Close .xpt"
                                           (lambda ()
                                             (let ((tabname (notebook-tab nb "current" "text" "")))
@@ -230,7 +265,7 @@
           (setf *pwd* (subseq file-to-open 0 (1+ (position #\/ file-to-open :from-end t))))
           (setf sas7bdat01 (read-sas7bdat file-to-open))
           (values file-to-open
-                  (table-data (sas7bdat-var-names sas7bdat01) (sas7bdat-obs-records sas7bdat01))))
+                  (table-data (sd7-var-names sas7bdat01) (sd7-obs-records sas7bdat01))))
         (values nil nil))))
          
 
