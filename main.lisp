@@ -1,13 +1,65 @@
-(ql:quickload :ltk)
-
 (load #p"c:/Dropbox/lisp/sasxpt/sasxpt.lisp")
+(ql:quickload :ltk)
 (load #p"c:/D/quicklisp/dists/quicklisp/software/ltk-20150113-http/tktable.lisp")
+(ql:quickload :cffi)
+
+
 
 (defpackage :sas-helper
-  (:use :common-lisp :ltk :tktable :sasxpt)
+  (:use :common-lisp :ltk :tktable :sasxpt :cffi)
   (:export #:main))
 
 (in-package :sas-helper)
+
+(define-foreign-library libreadsas
+  (:windows "c:\\D\\GitHub\\ReadStat\\obj\\libreadsas.dll")
+  (t (:default "libreadsas")))
+
+(use-foreign-library libreadsas)
+
+
+(defcstruct sas7bdat
+  (obs_count :int)
+  (var_count :int)
+  (var_names :pointer)
+  (var_labels :pointer)
+  (var_formats :pointer)
+  (var_types :pointer)
+  (values :pointer)
+  )
+
+(defun read-sas7bdat (file)
+  ""
+  (with-foreign-object (x 'sas7bdat)
+    (foreign-funcall "readstat_read_sas7bdat"
+                     :string file
+                     :pointer x
+                     :int)
+    (with-foreign-slots ((obs_count var_count var_names var_labels var_formats var_types values) x sas7bdat)
+      (format t "obs_count is ~a~%var_count is ~a~%" obs_count var_count)
+      (format t "var names are ~a~%"
+              (loop for i from 0 below var_count
+                 collect (mem-aref var_names :string i)))
+      (format t "var labels are ~a~%"
+              (loop for i from 0 below var_count
+                 collect (mem-aref var_labels :string i)))
+      (format t "var formats are ~a~%"
+              (loop for i from 0 below var_count
+                 collect (mem-aref var_formats :string i)))
+      (format t "var types are ~a~%"
+              (loop for i from 0 below var_count
+                 collect (mem-aref (mem-aref var_types :pointer i) :int 0)))
+
+      (format t "Values:~%")
+      (loop for i from 0 below obs_count
+         do
+           (loop for j from 0 below var_count
+              do
+                (format t "~a~c" (mem-aref values :string (+ (* i var_count) j)) #\tab))
+           (format t "~%"))
+      )))
+
+;; (read-sas7bdat "c:\\D\\GitHub\\ReadStat\\src\\ra.sas7bdat")
 
 (defun table-data (var-names obs-records)
   (format t "Function table-data start.~%")
@@ -165,6 +217,22 @@
                   (table-data (xpt-var-names xpt01) (xpt-obs-records xpt01))))
         (values nil nil))))
 
+
+(defun open-sas7bdat-file ()
+  ""
+  (let* ((file-to-open (get-open-file :filetypes '(("SAS datasets" "*.sas7bdat"))
+                                      :initialdir *pwd*))
+         (sas7bdat01 nil))
+    (format t "file-to-open is ~a.~%" (length file-to-open))
+    (if (> (length file-to-open) 0)
+        (progn
+          ;; set current folder
+          (setf *pwd* (subseq file-to-open 0 (1+ (position #\/ file-to-open :from-end t))))
+          (setf sas7bdat01 (read-sas7bdat file-to-open))
+          (values file-to-open
+                  (table-data (sas7bdat-var-names sas7bdat01) (sas7bdat-obs-records sas7bdat01))))
+        (values nil nil))))
+         
 
 
 
