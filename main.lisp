@@ -83,7 +83,7 @@
                   (cons "" var-names))
                  (loop
                     for obs in obs-records
-                    for c from 1 to 500 by 1
+                    for c from 1 to 100 by 1
                     collect (cons c obs)))))
     (format t "Function table-data end.~%")
     result))
@@ -149,7 +149,7 @@
 
 
 (defun main ()
-  (setf *debug-tk* t)
+  (setf *debug-tk* nil)
   (let ((frame-hash (make-hash-table :test 'equal))
         (xpt-hash (make-hash-table :test 'equal))
         ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable test)
@@ -166,49 +166,34 @@
             
             menubar (make-menubar)
             mfile (make-menu menubar "File" )
-            mf-open-xpt (make-menubutton mfile "Open .xpt" (lambda ()
-                                                             (multiple-value-bind (xpt-name obs-records) (open-xpt-file)
-                                                               (if xpt-name
-                                                                   (if (gethash xpt-name frame-hash)
-                                                                       (notebook-select nb (gethash xpt-name frame-hash))
-                                                                       (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
-                                                                         (setf f1 (make-instance 'frame :master nb)
-                                                                               sctable (make-instance 'scrolled-table
-                                                                                                      :titlerows *titlerows*
-                                                                                                      :titlecols *titlecols*
-                                                                                                      :data (and obs-records)
-                                                                                                      :master f1))
-                                                                         (configure-sctable sctable)
-                                                                         (setf (gethash xpt-name frame-hash) f1)
-                                                                                                      (setf (gethash xpt-name1 xpt-hash) xpt-name)
-                                                                                                      
-                                                                         (pack sctable :fill :both :expand t)
-                                                                         (notebook-add nb f1 :text xpt-name1) 
-                                                                         (configure mf-close-xpt 'state 'normal)
-                                                                         (notebook-select nb f1))))))
+            mf-open-xpt (make-menubutton mfile "Open Files" (lambda ()
+                                                              (let ((files-to-open (open-sas-files))
+                                                                    (file01 nil))
+                                                                (if (and (listp files-to-open) (> (length files-to-open) 0))
+                                                                    (progn
+                                                                      (set-pwd files-to-open)
+                                                                      (dolist (file01 files-to-open)
+                                                                        (multiple-value-bind (xpt-name obs-records) (open-sas-file file01)
+                                                                          (if xpt-name
+                                                                              (if (gethash xpt-name frame-hash)
+                                                                                  (notebook-select nb (gethash xpt-name frame-hash))
+                                                                                  (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
+                                                                                    (setf f1 (make-instance 'frame :master nb)
+                                                                                          sctable (make-instance 'scrolled-table
+                                                                                                                 :titlerows *titlerows*
+                                                                                                                 :titlecols *titlecols*
+                                                                                                                 :data (and obs-records)
+                                                                                                                 :master f1))
+                                                                                    (configure-sctable sctable)
+                                                                                    (setf (gethash xpt-name frame-hash) f1)
+                                                                                    (setf (gethash xpt-name1 xpt-hash) xpt-name)
+                                                                                    
+                                                                                    (pack sctable :fill :both :expand t)
+                                                                                    (notebook-add nb f1 :text xpt-name1) 
+                                                                                    (configure mf-close-xpt 'state 'normal)
+                                                                                    (notebook-select nb f1))))))))))
                                          :underline 0)
-            mf-open-sas7bdat (make-menubutton mfile "Open .sas7bdat" (lambda ()
-                                                             (multiple-value-bind (xpt-name obs-records) (open-sas7bdat-file)
-                                                               (if xpt-name
-                                                                   (if (gethash xpt-name frame-hash)
-                                                                       (notebook-select nb (gethash xpt-name frame-hash))
-                                                                       (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
-                                                                         (setf f1 (make-instance 'frame :master nb)
-                                                                               sctable (make-instance 'scrolled-table
-                                                                                                      :titlerows *titlerows*
-                                                                                                      :titlecols *titlecols*
-                                                                                                      :data (and obs-records)
-                                                                                                      :master f1))
-                                                                         (configure-sctable sctable)
-                                                                         (setf (gethash xpt-name frame-hash) f1)
-                                                                                                      (setf (gethash xpt-name1 xpt-hash) xpt-name)
-                                                                                                      
-                                                                         (pack sctable :fill :both :expand t)
-                                                                         (notebook-add nb f1 :text xpt-name1) 
-                                                                         (configure mf-close-xpt 'state 'normal)
-                                                                         (notebook-select nb f1))))))
-                                         :underline 0)
-            mf-close-xpt (make-menubutton mfile "Close .xpt"
+            mf-close-xpt (make-menubutton mfile "Close"
                                           (lambda ()
                                             (let ((tabname (notebook-tab nb "current" "text" "")))
                                               (remhash (gethash tabname xpt-hash) frame-hash)
@@ -229,7 +214,7 @@
       (wm-title *tk* "SAS Helper")
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
-      (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-xpt-file))) ;todo this is test.
+      (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-sas-files))) ;todo this is test.
       (bind *tk* "<t>" (lambda (event) (declare (ignore event))))
 
       (pack nb :fill :both :expand t)
@@ -237,38 +222,36 @@
       )))
 
   
-(defun open-xpt-file ()
-  ""
-  (let* ((file-to-open (get-open-file :filetypes '(("SAS XPT files" "*.xpt"))
-                                      :initialdir *pwd*))
-         (xpt01 nil))
-    (format t "file-to-open is ~a.~%" (length file-to-open))
-    (if (> (length file-to-open) 0)
+(defun open-sas-files ()
+  "Open SAS files"
+  (get-open-file :filetypes '(("SAS datasets" "*.sas7bdat")
+                              ("SAS XPT files" "*.xpt"))
+                 :initialdir *pwd*
+                 :multiple t))
+
+(defun open-sas-file (file)
+  "Open one SAS file"
+  (let ((data nil)
+        (file-ext (string-upcase (subseq file (1+ (position #\. file :from-end t))))))
+    (format t "file is ~a.~%" file)
+    (if (> (length file) 0)
         (progn
-          ;; set current folder
-          (setf *pwd* (subseq file-to-open 0 (1+ (position #\/ file-to-open :from-end t))))
-          (setf xpt01 (read-xpt file-to-open))
-          (values file-to-open
-                  (table-data (xpt-var-names xpt01) (xpt-obs-records xpt01))))
+          (cond
+            ((string= file-ext "SAS7BDAT")
+             (setf data (read-sas7bdat file))
+             (values file
+                     (table-data (sd7-var-names data) (sd7-obs-records data))))
+            ((string= file-ext "XPT")
+             (setf data (read-xpt file))
+             (values file
+                     (table-data (xpt-var-names data) (xpt-obs-records data))))))
         (values nil nil))))
 
-
-(defun open-sas7bdat-file ()
-  ""
-  (let* ((file-to-open (get-open-file :filetypes '(("SAS datasets" "*.sas7bdat"))
-                                      :initialdir *pwd*))
-         (sas7bdat01 nil))
-    (format t "file-to-open is ~a.~%" (length file-to-open))
-    (if (> (length file-to-open) 0)
-        (progn
-          ;; set current folder
-          (setf *pwd* (subseq file-to-open 0 (1+ (position #\/ file-to-open :from-end t))))
-          (setf sas7bdat01 (read-sas7bdat file-to-open))
-          (values file-to-open
-                  (table-data (sd7-var-names sas7bdat01) (sd7-obs-records sas7bdat01))))
-        (values nil nil))))
-         
-
+(defun set-pwd (files)
+  "set current folder"
+  (let ((file (car files)))
+    (if (> (length file) 0)
+        (setf *pwd* (subseq file 0 (1+ (position #\/ file :from-end t)))))))
 
 
 ;; (main)
