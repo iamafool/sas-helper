@@ -3,8 +3,6 @@
 (load #p"c:/D/quicklisp/dists/quicklisp/software/ltk-20150113-http/tktable.lisp")
 (ql:quickload :cffi)
 
-
-
 (defpackage :sas-helper
   (:use :common-lisp :ltk :tktable :sasxpt :cffi)
   (:export #:main))
@@ -14,8 +12,14 @@
 (define-foreign-library libreadsas
   (:windows "c:\\D\\GitHub\\ReadStat\\obj\\libreadsas.dll")
   (t (:default "libreadsas")))
-
 (use-foreign-library libreadsas)
+
+
+
+(defvar *pwd* nil)                      ;current folder
+(defvar *titlerows* 2)
+(defvar *titlecols* 1)
+(defvar *no-rows-read* 500)
 
 
 (defcstruct sas7bdat
@@ -83,7 +87,7 @@
                   (cons "" var-names))
                  (loop
                     for obs in obs-records
-                    for c from 1 to 100 by 1
+                    for c from 1 by 1
                     collect (cons c obs)))))
     (format t "Function table-data end.~%")
     result))
@@ -94,11 +98,6 @@
       (obs-records (xpt-obs-records xpt01)))
   (table-data var-names obs-records))
 |#
-
-
-(defvar *pwd* nil)                      ;current folder
-(defvar *titlerows* 2)
-(defvar *titlecols* 1)
 
 ;; get the cells with tag "mysel"
 (defun get-cell-mysel (table-path)
@@ -123,7 +122,7 @@
     (format-wish "~a tag raise mysel" table-path)
     
     ;; configure scrolled table
-    (format-wish "~a configure -background white -foreground black -state disabled -ellipsis ... -multiline 1" table-path)
+    (format-wish "~a configure -background white -foreground black -state disable -ellipsis ... -multiline 1" table-path)
     (format-wish "~a configure -selecttype cell -selectmode extended -anchor w -ipadx 2 -pady 2 -font myfont1" table-path)
     (format-wish "~a configure -selecttitle 1 -cursor arrow" table-path)
 
@@ -141,18 +140,16 @@
     (format-wish "~a configure -browsecommand {callback ~a}"
                  table-path (format nil "~a-bc" table-name))
                      
-                                                  
-    ;; configure embedded window
-    (format-wish "~a window configure 1,1 -window ~a" table-path (widget-path test))
-
     ))
 
 
 (defun main ()
-  (setf *debug-tk* nil)
+  (setf *debug-tk* t)
   (let ((frame-hash (make-hash-table :test 'equal))
         (xpt-hash (make-hash-table :test 'equal))
-        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable test)
+        (data-hash (make-hash-table :test 'equal))
+        (last-obs-hash (make-hash-table :test 'equal))
+        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable test last-obs obs-count1)
     
 
     (with-ltk ()
@@ -168,12 +165,18 @@
             mfile (make-menu menubar "File" )
             mf-open-xpt (make-menubutton mfile "Open Files" (lambda ()
                                                               (let ((files-to-open (open-sas-files))
-                                                                    (file01 nil))
+                                                                    (file01 nil)
+                                                                    (data-temp nil))
+                                                                (setf last-obs 0)
                                                                 (if (and (listp files-to-open) (> (length files-to-open) 0))
                                                                     (progn
                                                                       (set-pwd files-to-open)
                                                                       (dolist (file01 files-to-open)
-                                                                        (multiple-value-bind (xpt-name obs-records) (open-sas-file file01)
+                                                                        (multiple-value-bind (xpt-name var-count obs-count obs-records) (open-sas-file file01)
+                                                                          (setf last-obs (+ *titlerows* (min obs-count *no-rows-read*)))
+                                                                          (setf obs-count1 obs-count)
+                                                                          (setf (gethash xpt-name last-obs-hash) last-obs) ;save the index of last obs in hash table
+                                                                          (setf (gethash xpt-name data-hash) obs-records) 
                                                                           (if xpt-name
                                                                               (if (gethash xpt-name frame-hash)
                                                                                   (notebook-select nb (gethash xpt-name frame-hash))
@@ -182,7 +185,7 @@
                                                                                           sctable (make-instance 'scrolled-table
                                                                                                                  :titlerows *titlerows*
                                                                                                                  :titlecols *titlecols*
-                                                                                                                 :data (and obs-records)
+                                                                                                                 :data (and obs-records (subseq obs-records 0 last-obs))
                                                                                                                  :master f1))
                                                                                     (configure-sctable sctable)
                                                                                     (setf (gethash xpt-name frame-hash) f1)
@@ -198,6 +201,7 @@
                                             (let ((tabname (notebook-tab nb "current" "text" "")))
                                               (remhash (gethash tabname xpt-hash) frame-hash)
                                               (remhash tabname xpt-hash)
+                                              (remhash (gethash tabname xpt-hash) data-hash)
                                               (if (= (hash-table-count xpt-hash) 0)
                                                   (configure mf-close-xpt 'state 'disable))
                                               (format-wish "~a forget current" (widget-path nb))))
@@ -215,7 +219,8 @@
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
       (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-sas-files))) ;todo this is test.
-      (bind *tk* "<t>" (lambda (event) (declare (ignore event))))
+      (bind *tk* "<n>" (lambda (event) (declare (ignore event)) (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1)))
+      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable nb xpt-hash data-hash)))
 
       (pack nb :fill :both :expand t)
       (pack ce :side :bottom :fill :both)
@@ -239,13 +244,13 @@
           (cond
             ((string= file-ext "SAS7BDAT")
              (setf data (read-sas7bdat file))
-             (values file
+             (values file (sd7-var-count data) (sd7-obs-count data)
                      (table-data (sd7-var-names data) (sd7-obs-records data))))
             ((string= file-ext "XPT")
              (setf data (read-xpt file))
-             (values file
+             (values file 0 0
                      (table-data (xpt-var-names data) (xpt-obs-records data))))))
-        (values nil nil))))
+        (values nil 0 0 nil))))
 
 (defun set-pwd (files)
   "set current folder"
@@ -254,20 +259,51 @@
         (setf *pwd* (subseq file 0 (1+ (position #\/ file :from-end t)))))))
 
 
-;; (main)
-;; (ltk::nbtest)
-;; (ltk::ltktest)
-
 
 (defun about-box ()
   (format t "About~%")
   (finish-output))
 
+(defun set-array (array-name array-data)
+  "For TCL, array set name {}"
+  (with-open-stream (s (make-string-output-stream))
+    (format s "global ~a;array set ~a {~%" array-name array-name)
+    (loop
+       for row in array-data
+       for i from 0 by 1
+       do
+         (loop
+            for col in row
+            for j from 0 by 1
+            do
+              (format s "~a,~a ~a~a~a~%" i j #\" col #\")))
+    (format s "}~%")
+    (get-output-stream-string s)))
 
-(defun test (sctable)
-  (let ((x (window-x *tk*))
-        (y (window-y *tk*)))
-    (format-wish "~a configure -ellipsis ~a" (widget-path (table sctable)) "...")
+;; (set-array "ws" '((5 10) (10 15)))
+
+(defun update-table-variable (sctable nb xpt-hash data-hash last-obs-hash obs-count)
+  (let* ((tabname (notebook-tab nb "current" "text" ""))
+         (variable-name (ltk::name (table sctable)))
+         (last-obs (gethash (gethash tabname xpt-hash) last-obs-hash))
+         (new-last-obs (min (+ *titlerows* obs-count) (+ last-obs *no-rows-read*))))
+    (format-wish "global ~a; array unset ~a" variable-name variable-name)
+    (send-wish (set-array variable-name
+                          (append (subseq (gethash (gethash tabname xpt-hash) data-hash) 0 *titlerows*)
+                                  (subseq (gethash (gethash tabname xpt-hash) data-hash) last-obs new-last-obs))))
+    (setf (gethash (gethash tabname xpt-hash) last-obs-hash) new-last-obs)
 
   ))
 
+(defun test (sctable nb xpt-hash data-hash)
+  (let ((x (window-x *tk*))
+        (y (window-y *tk*))
+        (table-path (widget-path (table sctable)))
+        (tabname (notebook-tab nb "current" "text" ""))
+        )
+    
+    ;; configure embedded window
+    ;; (format-wish "~a window configure 1,1 -window ~a" table-path (widget-path test))
+  ))
+
+;; (main)
