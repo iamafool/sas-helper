@@ -219,7 +219,12 @@
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
       (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-sas-files))) ;todo this is test.
-      (bind *tk* "<n>" (lambda (event) (declare (ignore event)) (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1)))
+      (bind *tk* "<n>" (lambda (event) (declare (ignore event))
+                               (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1
+                                                      :pagedown t)))
+      (bind *tk* "<p>" (lambda (event) (declare (ignore event))
+                               (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1
+                                                      :pagedown nil)))
       (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable nb xpt-hash data-hash)))
 
       (pack nb :fill :both :expand t)
@@ -282,16 +287,23 @@
 
 ;; (set-array "ws" '((5 10) (10 15)))
 
-(defun update-table-variable (sctable nb xpt-hash data-hash last-obs-hash obs-count)
+(defun update-table-variable (sctable nb xpt-hash data-hash last-obs-hash obs-count &key (pagedown t))
   (let* ((tabname (notebook-tab nb "current" "text" ""))
          (variable-name (ltk::name (table sctable)))
          (last-obs (gethash (gethash tabname xpt-hash) last-obs-hash))
-         (new-last-obs (min (+ *titlerows* obs-count) (+ last-obs *no-rows-read*))))
+         (new-start (if pagedown
+                        last-obs
+                        (max *titlerows* (- last-obs *no-rows-read* *no-rows-read*))))
+         (new-end (if pagedown
+                      (min (+ *titlerows* obs-count) (+ last-obs *no-rows-read*))
+                      (max (+ *titlerows* (min obs-count *no-rows-read*)) (- last-obs *no-rows-read*)))))
+    (format t "last obs is ~a ~%" last-obs)
+    (format t "new start is ~a, new end is ~a~%" new-start new-end)
     (format-wish "global ~a; array unset ~a" variable-name variable-name)
     (send-wish (set-array variable-name
                           (append (subseq (gethash (gethash tabname xpt-hash) data-hash) 0 *titlerows*)
-                                  (subseq (gethash (gethash tabname xpt-hash) data-hash) last-obs new-last-obs))))
-    (setf (gethash (gethash tabname xpt-hash) last-obs-hash) new-last-obs)
+                                  (subseq (gethash (gethash tabname xpt-hash) data-hash) new-start new-end))))
+    (setf (gethash (gethash tabname xpt-hash) last-obs-hash) new-end)
 
   ))
 
