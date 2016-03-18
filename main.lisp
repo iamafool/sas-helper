@@ -17,83 +17,89 @@
 
 
 (defvar *pwd* nil)                      ;current folder
-(defvar *titlerows* 2)
-(defvar *titlecols* 1)
-(defvar *no-rows-read* 500)
+(defvar *titlerows* 2)                  ;the number of title rows
+(defvar *titlecols* 1)                  ;the number of title columns
+(defvar *no-rows-read* 500)             ;the maximum rows to display in the widget table
 
 
-(defcstruct sas7bdat
+(defcstruct sas7bdat                    ;define the c struct that will be used by libreadstat
   (obs_count :int)
   (var_count :int)
   (var_names :pointer)
   (var_labels :pointer)
   (var_formats :pointer)
   (var_types :pointer)
-  (values :pointer)
-  )
+  (values :pointer))
 
-(defclass sd7 ()
-  ((obs-count :initform nil :accessor sd7-obs-count)
-   (var-count :initform nil :accessor sd7-var-count)
-   (var-names :initform nil :accessor sd7-var-names)
-   (var-labels :initform nil :accessor sd7-var-labels)
-   (var-formats :initform nil :accessor sd7-var-formats)
-   (var-types :initform nil :accessor sd7-var-types)
-   (obs-records :initform nil :accessor sd7-obs-records)))
+(defclass sas-data ()
+  ((obs-count :initform 0 :accessor sas-data-obs-count)
+   (var-count :initform 0 :accessor sas-data-var-count)
+   (var-names :initform nil :accessor sas-data-var-names)
+   (var-labels :initform nil :accessor sas-data-var-labels)
+   (var-formats :initform nil :accessor sas-data-var-formats)
+   (var-types :initform nil :accessor sas-data-var-types)
+   (obs-records :initform nil :accessor sas-data-obs-records)))
+
+(defclass nb-sctable ()
+  ((filename :initform "" :accessor nb-sctable-filename)
+   (data :initform nil :accessor nb-sctable-data)
+   (view-start :initform 0 :accessor nb-sctable-view-start)
+   (view-end :initform 0 :accessor nb-sctable-view-end)
+   (sctable :initform nil :accessor nb-sctable-sctable)))
 
   
 (defun read-sas7bdat (file)
-  ""
-  (let ((sd7-i-1 (make-instance 'sd7))) ; sd7 instance 01
+  "use libreadstat to read sas dataset, sas7bdat"
+  (let ((sas-data-i1 (make-instance 'sas-data))) ; sas-data instance 01
     (with-foreign-object (x 'sas7bdat)
       (foreign-funcall "readstat_read_sas7bdat"
                        :string file
                        :pointer x
                        :int)
       (with-foreign-slots ((obs_count var_count var_names var_labels var_formats var_types values) x sas7bdat)
-        (setf (sd7-obs-count sd7-i-1) obs_count)
-        (setf (sd7-var-count sd7-i-1) var_count)
-        (setf (sd7-var-names sd7-i-1)
+        (setf (sas-data-obs-count sas-data-i1) obs_count)
+        (setf (sas-data-var-count sas-data-i1) var_count)
+        (setf (sas-data-var-names sas-data-i1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_names :string i)))
-        (setf (sd7-var-labels sd7-i-1)
+        (setf (sas-data-var-labels sas-data-i1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_labels :string i)))
-        (setf (sd7-var-formats sd7-i-1)
+        (setf (sas-data-var-formats sas-data-i1)
               (loop for i from 0 below var_count
                  collect (mem-aref var_formats :string i)))
-        (setf (sd7-var-types sd7-i-1)
+        (setf (sas-data-var-types sas-data-i1)
               (loop for i from 0 below var_count
                  collect (mem-aref (mem-aref var_types :pointer i) :int 0)))
-        (setf (sd7-obs-records sd7-i-1)
+        (setf (sas-data-obs-records sas-data-i1)
               (loop for i from 0 below obs_count
                    collect
                    (loop for j from 0 below var_count
-                        collect (mem-aref values :string (+ (* i var_count) j)))))
+                        collect (mem-aref values :string (+ (* i var_count) j)))))))
+    sas-data-i1))
 
-        ))
-    sd7-i-1))
+;; (setf sas-data (read-sas7bdat "c:\\D\\GitHub\\ReadStat\\src\\ra.sas7bdat"))
+;; (sas-data-var-count sas-data)
+;; (sas-data-var-names sas-data)
+;; (sas-data-obs-records sas-data)
 
-;; (setf sd7 (read-sas7bdat "c:\\D\\GitHub\\ReadStat\\src\\ra.sas7bdat"))
-;; (sd7-var-count sd7)
-;; (sd7-var-names sd7)
-;; (sd7-obs-records sd7)
-
-(defun table-data (var-names obs-records)
+(defun table-data (sas-data &key (row-titles '(no name)) (start 0) (end nil))
   (format t "Function table-data start.~%")
-  (let ((result
+  (let* ((var-names (sas-data-var-names sas-data))
+         (obs-records (sas-data-obs-records sas-data))
+         (result
          (append (list
                   (cons "#" (loop for c from 1 to (length var-names) collect c))
                   (cons "" var-names))
                  (loop
-                    for obs in obs-records
-                    for c from 1 by 1
+                    for obs in (subseq obs-records start end)
+                    for c from (1+ start) by 1
                     collect (cons c obs)))))
     (format t "Function table-data end.~%")
     result))
 
 #|
-(let* ((xpt01 (read-xpt "c:/dropbox/lisp/sasxpt/dm.xpt"))
+(let* ((xpt01 (read-xpt "c:/dropbox/lisp/sasxpt/dm.xpt")) ;todo update
       (var-names (xpt-var-names xpt01))
       (obs-records (xpt-obs-records xpt01)))
   (table-data var-names obs-records))
@@ -145,11 +151,9 @@
 
 (defun main ()
   (setf *debug-tk* t)
-  (let ((frame-hash (make-hash-table :test 'equal))
-        (xpt-hash (make-hash-table :test 'equal))
-        (data-hash (make-hash-table :test 'equal))
-        (last-obs-hash (make-hash-table :test 'equal))
-        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about f1 sctable test last-obs obs-count1)
+  (let ((filename-hash (make-hash-table :test 'equal))
+        (nb-sctable-hash (make-hash-table :test 'equal))
+        ce nb menubar mfile mf-open-xpt mf-close-xpt sep1 mf-exit mhelp mf-about test)
     
 
     (with-ltk ()
@@ -164,45 +168,46 @@
             menubar (make-menubar)
             mfile (make-menu menubar "File" )
             mf-open-xpt (make-menubutton mfile "Open Files" (lambda ()
-                                                              (let ((files-to-open (open-sas-files))
-                                                                    (file01 nil)
-                                                                    (data-temp nil))
-                                                                (setf last-obs 0)
+                                                              (let ((files-to-open (open-sas-files)))
                                                                 (if (and (listp files-to-open) (> (length files-to-open) 0))
                                                                     (progn
                                                                       (set-pwd files-to-open)
                                                                       (dolist (file01 files-to-open)
-                                                                        (multiple-value-bind (xpt-name var-count obs-count obs-records) (open-sas-file file01)
-                                                                          (setf last-obs (+ *titlerows* (min obs-count *no-rows-read*)))
-                                                                          (setf obs-count1 obs-count)
-                                                                          (setf (gethash xpt-name last-obs-hash) last-obs) ;save the index of last obs in hash table
-                                                                          (setf (gethash xpt-name data-hash) obs-records) 
-                                                                          (if xpt-name
-                                                                              (if (gethash xpt-name frame-hash)
-                                                                                  (notebook-select nb (gethash xpt-name frame-hash))
-                                                                                  (let* ((xpt-name1 (subseq xpt-name (1+ (position #\/ xpt-name :from-end t)))))
-                                                                                    (setf f1 (make-instance 'frame :master nb)
-                                                                                          sctable (make-instance 'scrolled-table
-                                                                                                                 :titlerows *titlerows*
-                                                                                                                 :titlecols *titlecols*
-                                                                                                                 :data (and obs-records (subseq obs-records 0 last-obs))
-                                                                                                                 :master f1))
-                                                                                    (configure-sctable sctable)
-                                                                                    (setf (gethash xpt-name frame-hash) f1)
-                                                                                    (setf (gethash xpt-name1 xpt-hash) xpt-name)
-                                                                                    
-                                                                                    (pack sctable :fill :both :expand t)
-                                                                                    (notebook-add nb f1 :text xpt-name1) 
-                                                                                    (configure mf-close-xpt 'state 'normal)
-                                                                                    (notebook-select nb f1))))))))))
+                                                                        (let* ((data01 (open-sas-file file01))
+                                                                               (nb-sctable-i1 (make-instance 'nb-sctable))
+                                                                               (last-obs (min (sas-data-obs-count data01) *no-rows-read*))
+                                                                               (nb-tab-text01 (subseq file01 (1+ (position #\/ file01 :from-end t))))
+                                                                               (frame1 nil)
+                                                                               (sctable1 nil))
+                                                                          (setf (nb-sctable-view-start nb-sctable-i1) 0)
+                                                                          (setf (nb-sctable-view-end nb-sctable-i1) last-obs)
+                                                                          (setf (nb-sctable-data nb-sctable-i1) data01)
+                                                                          
+                                                                          (if (gethash file01 nb-sctable-hash)
+                                                                              (notebook-select nb (master (nb-sctable-sctable (gethash file01 nb-sctable-hash)))) ;get frame from nb-sctable instance
+                                                                              (progn
+                                                                                (setf frame1 (make-instance 'frame :master nb)
+                                                                                      sctable1 (make-instance 'scrolled-table
+                                                                                                             :titlerows *titlerows*
+                                                                                                             :titlecols *titlecols*
+                                                                                                             :data (table-data data01 :start 0 :end last-obs)
+                                                                                                             :master frame1))
+                                                                                (configure-sctable sctable1)
+                                                                                (setf (nb-sctable-sctable nb-sctable-i1) sctable1)
+                                                                                (setf (gethash file01 nb-sctable-hash) nb-sctable-i1)
+                                                                                (setf (gethash nb-tab-text01 filename-hash) file01)
+                                                                                
+                                                                                (pack sctable1 :fill :both :expand t)
+                                                                                (notebook-add nb frame1 :text nb-tab-text01) 
+                                                                                (configure mf-close-xpt 'state 'normal)
+                                                                                (notebook-select nb frame1)))))))))
                                          :underline 0)
             mf-close-xpt (make-menubutton mfile "Close"
                                           (lambda ()
                                             (let ((tabname (notebook-tab nb "current" "text" "")))
-                                              (remhash (gethash tabname xpt-hash) frame-hash)
-                                              (remhash tabname xpt-hash)
-                                              (remhash (gethash tabname xpt-hash) data-hash)
-                                              (if (= (hash-table-count xpt-hash) 0)
+                                              (remhash (gethash tabname filename-hash) nb-sctable-hash)
+                                              (remhash tabname filename-hash)
+                                              (if (= (hash-table-count filename-hash) 0)
                                                   (configure mf-close-xpt 'state 'disable))
                                               (format-wish "~a forget current" (widget-path nb))))
                                           :state 'disable)
@@ -220,12 +225,10 @@
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
       (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-sas-files))) ;todo this is test.
       (bind *tk* "<n>" (lambda (event) (declare (ignore event))
-                               (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1
-                                                      :pagedown t)))
+                               (update-table-variable nb filename-hash nb-sctable-hash :pagedown t)))
       (bind *tk* "<p>" (lambda (event) (declare (ignore event))
-                               (update-table-variable sctable nb xpt-hash data-hash last-obs-hash obs-count1
-                                                      :pagedown nil)))
-      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable nb xpt-hash data-hash)))
+                               (update-table-variable nb filename-hash nb-sctable-hash :pagedown nil)))
+      (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable1 nb filename-hash)))
 
       (pack nb :fill :both :expand t)
       (pack ce :side :bottom :fill :both)
@@ -245,17 +248,12 @@
         (file-ext (string-upcase (subseq file (1+ (position #\. file :from-end t))))))
     (format t "file is ~a.~%" file)
     (if (> (length file) 0)
-        (progn
-          (cond
-            ((string= file-ext "SAS7BDAT")
-             (setf data (read-sas7bdat file))
-             (values file (sd7-var-count data) (sd7-obs-count data)
-                     (table-data (sd7-var-names data) (sd7-obs-records data))))
-            ((string= file-ext "XPT")
-             (setf data (read-xpt file))
-             (values file 0 0
-                     (table-data (xpt-var-names data) (xpt-obs-records data))))))
-        (values nil 0 0 nil))))
+        (cond
+          ((string= file-ext "SAS7BDAT")
+           (setf data (read-sas7bdat file)))
+          ((string= file-ext "XPT")
+           (setf data (read-xpt file)))))
+    data))
 
 (defun set-pwd (files)
   "set current folder"
@@ -287,27 +285,38 @@
 
 ;; (set-array "ws" '((5 10) (10 15)))
 
-(defun update-table-variable (sctable nb xpt-hash data-hash last-obs-hash obs-count &key (pagedown t))
+(defun update-table-variable (nb filename-hash nb-sctable-hash &key (pagedown t))
   (let* ((tabname (notebook-tab nb "current" "text" ""))
-         (variable-name (ltk::name (table sctable)))
-         (last-obs (gethash (gethash tabname xpt-hash) last-obs-hash))
+         (filename (gethash tabname filename-hash))
+         (nb-sctable-i1 (gethash filename nb-sctable-hash))
+         (variable-name (ltk::name (table (nb-sctable-sctable nb-sctable-i1))))
+         (view-start (nb-sctable-view-start nb-sctable-i1))
+         (view-end (nb-sctable-view-end nb-sctable-i1))
+         (obs-count (sas-data-obs-count (nb-sctable-data nb-sctable-i1)))
          (new-start (if pagedown
-                        last-obs
-                        (max *titlerows* (- last-obs *no-rows-read* *no-rows-read*))))
+                        (if (< view-end obs-count) view-end view-start)
+                        (max 0 (- view-start *no-rows-read*))))
          (new-end (if pagedown
-                      (min (+ *titlerows* obs-count) (+ last-obs *no-rows-read*))
-                      (max (+ *titlerows* (min obs-count *no-rows-read*)) (- last-obs *no-rows-read*)))))
-    (format t "last obs is ~a ~%" last-obs)
+                      (min obs-count (+ view-end *no-rows-read*))
+                      (max (min obs-count *no-rows-read*) (- view-end *no-rows-read*)))))
+
+    ;;todo delete
+    (format t "last obs is ~a ~%" view-end)
     (format t "new start is ~a, new end is ~a~%" new-start new-end)
-    (format-wish "global ~a; array unset ~a" variable-name variable-name)
-    (send-wish (set-array variable-name
-                          (append (subseq (gethash (gethash tabname xpt-hash) data-hash) 0 *titlerows*)
-                                  (subseq (gethash (gethash tabname xpt-hash) data-hash) new-start new-end))))
-    (setf (gethash (gethash tabname xpt-hash) last-obs-hash) new-end)
+
+    (if (not (or (and pagedown (= view-end obs-count)) ;pagedown and reach the end of sas data
+                 (and (null pagedown) (= view-start 0)) ;pageup and reach the first obs of sas data
+                 ))
+        (progn
+          (format-wish "global ~a; array unset ~a" variable-name variable-name)
+          (send-wish (set-array variable-name
+                                (table-data (nb-sctable-data nb-sctable-i1) :start new-start :end new-end)))
+          (setf (nb-sctable-view-end nb-sctable-i1) new-end)
+          (setf (nb-sctable-view-start nb-sctable-i1) new-start)))
 
   ))
 
-(defun test (sctable nb xpt-hash data-hash)
+(defun test (sctable nb filename-hash)
   (let ((x (window-x *tk*))
         (y (window-y *tk*))
         (table-path (widget-path (table sctable)))
