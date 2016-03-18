@@ -217,18 +217,29 @@
                                      :underline 1
                                      :accelerator "Alt q")
             mhelp (make-menu menubar "Help" )
-            mf-about (make-menubutton mhelp "About" #'about-box
-                                      :underline 0))
+            mf-help (make-menubutton mhelp "Help" (lambda () (help *tk*)) :underline 0)
+            sep2 (add-separator mhelp)
+            mf-about (make-menubutton mhelp "About" (lambda () (about-box *tk*)) :underline 0)
+            )
 
       (wm-title *tk* "SAS Helper")
       (minsize *tk* 400 300)
       (bind *tk* "<Alt-q>" (lambda (event) (declare (ignore event)) (setf *exit-mainloop* t)))
-      (bind *tk* "<v>" (lambda (event) (declare (ignore event)) (open-sas-files))) ;todo this is test.
+      (bind *tk* "<c>" (lambda (event) (declare (ignore event)) (focus ce)))
+      (bind *tk* "<e>" (lambda (event) (declare (ignore event)) ))
+      (bind *tk* "<f>" (lambda (event) (declare (ignore event)) ))
+      (bind *tk* "<h>" (lambda (event) (declare (ignore event)) ))
+      (bind *tk* "<H>" (lambda (event) (declare (ignore event)) (help *tk*)))
       (bind *tk* "<n>" (lambda (event) (declare (ignore event))
                                (update-table-variable nb filename-hash nb-sctable-hash :pagedown t)))
+      (bind *tk* "<o>" (lambda (event) (declare (ignore event)) (open-sas-files)))
+      (bind *tk* "<O>" (lambda (event) (declare (ignore event)) ))
       (bind *tk* "<p>" (lambda (event) (declare (ignore event))
                                (update-table-variable nb filename-hash nb-sctable-hash :pagedown nil)))
+      (bind *tk* "<s>" (lambda (event) (declare (ignore event)) ))
+      (bind *tk* "<S>" (lambda (event) (declare (ignore event)) ))
       (bind *tk* "<t>" (lambda (event) (declare (ignore event)) (test sctable1 nb filename-hash)))
+      (bind *tk* "<v>" (lambda (event) (declare (ignore event)) ))
 
       (pack nb :fill :both :expand t)
       (pack ce :side :bottom :fill :both)
@@ -262,10 +273,34 @@
         (setf *pwd* (subseq file 0 (1+ (position #\/ file :from-end t)))))))
 
 
+(defun help (window)
+  (message-box
+   "Key shortcuts
+c: Command.
+e: Edit check rules.
+f: Filter.
+h: Hide column.
+H: Help.
+n: Next ~a obs.
+o: Open file.
+O: Options.
+p: Previous ~a obs.
+s: Sort in ascending order.
+S: Sort in descending order.
+v: Show varialbes info.
 
-(defun about-box ()
-  (format t "About~%")
-  (finish-output))
+"
+   "Help" "ok" "info" :parent window))
+  
+
+(defun about-box (window)
+  (message-box
+   "Hope it helps!
+
+Kenneth Yan
+xyan20@its.jnj.com
+yanxiaoguang@gmail.com" "About" "ok" "info" :parent window))
+
 
 (defun set-array (array-name array-data)
   "For TCL, array set name {}"
